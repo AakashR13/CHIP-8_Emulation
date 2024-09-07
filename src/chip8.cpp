@@ -4,6 +4,16 @@
 
 Chip8::Chip8(){}
 
+Chip8* Chip8::s_Instance = 0 ;
+
+Chip8* Chip8::CreateSingleton()
+{
+    if (0 == s_Instance)
+        s_Instance = new Chip8( ) ;
+    return s_Instance 
+}
+
+
 void Chip8::CPUReset()
 {
     m_AddressI = 0;
@@ -28,23 +38,59 @@ WORD Chip8::GetNextOpcode()
     return res;
 }
 
+
+bool Chip8::LoadRom(const std::string& romname)
+{
+    CPUReset() ;
+	Opcode00E0() ;
+
+    //load in the game
+    FILE* in ;
+    in = fopen(romname.c_str(), "rb") ;
+
+    // check rom exists
+    if (0 == in)
+    {
+        return false ;
+    }
+
+    fread(&m_GameMemory[0x200], ROMSIZE, 1, in) ;
+    fclose(in) ;
+
+    return true ;
+}
+
+void Chip8::KeyPressed(int key)
+{
+    m_KeyState[key] = 1;
+}
+
+void Chip8::KeyReleased(int key)
+{
+    m_KeyState[key] = 0;
+}
+
+void Chip8::DecreaseTimers()
+{
+    if (m_DelayTimer > 0)
+		m_DelayTimer-- ;
+
+	if (m_SoundTimer > 0)
+		m_SoundTimer--;
+
+	if (m_SoundTimer > 0)
+		PlaySound( ) ;
+}
+
+void Chip8::PlaySound()
+{
+
+}
+
 void Chip8::ExecuteNextOpcode()
 {
     WORD opcode = GetNextOpcode();
-    // switch(opcode & 0xF000)
-    // {
-    //     case 0x1000: Opcode1NNN(opcode); break;
-    //     case 0x0000: //break down further
-    //     {
-    //         switch(opcode & 0x00F)
-    //         {
-    //             case 0x0000: Opcode00E0(); break; //clear screen
-    //             case 0x000E: Opcode00EE(); break; //return from subroutine
-    //         }
-    //     }
-    //     break;
-    //     default : break;
-    // }
+
     switch(opcode & 0xF000)
     {
         case 0x0000: DecodeOpcode00(opcode); break;
@@ -124,13 +170,22 @@ void Chip8::DecodeOpcodeF(WORD opcode)
 // Clear the screen
 void Chip8::Opcode00E0 ()
 {
-
+    for(int x =0;x<640;x++)
+    {
+        for(int y=0;y<320;y++)
+        {
+            m_ScreenData[y][x][0] = 255;
+            m_ScreenData[y][x][1] = 255;
+            m_ScreenData[y][x][2] = 255;
+        }
+    }
 }
 
 // Returns from subroutine
 void Chip8::Opcode00EE	()
 {
-
+    m_ProgramCounter = m_Stack.back();
+    m_Stack.pop_back();
 }
 
 // Jump to address at NNN
@@ -237,7 +292,7 @@ void Chip8::Opcode8XY5(WORD opcode)
 void Chip8::Opcode8XY6(WORD opcode)
 {
     m_Registers[0xF] = m_Registers[((opcode & 0x0F00)>>8)] & 0x1;
-    m_Registers[(opcode & 0x0F00)>>8] >>=1
+    m_Registers[(opcode & 0x0F00)>>8] >>=1;
 }
 
 // Apply Vx = Vy-Vx
@@ -289,28 +344,87 @@ void Chip8::OpcodeCXNN(WORD opcode)
 // Vf is 1 if any screen pixels are flipped from set to unset
 void Chip8::OpcodeDXYN(WORD opcode)
 {
-    
+    const int SCALE = 10 ;
+	int regx = opcode & 0x0F00 ;
+	regx = regx >> 8 ;
+	int regy = opcode & 0x00F0 ;
+	regy = regy >> 4 ;
+
+	int coordx = m_Registers[regx] * SCALE;
+	int coordy = m_Registers[regy] * SCALE ;
+	int height = opcode & 0x000F ;
+
+	m_Registers[0xf] = 0 ;
+
+	for (int yline = 0; yline < height; yline++)
+	{
+		// this is the data of the sprite stored at m_GameMemory[m_AddressI]
+		// the data is stored as a line of bytes so each line is indexed by m_AddressI + yline
+		BYTE data = (m_GameMemory[m_AddressI+yline]);
+
+		// for each of the 8 pixels in the line
+		int xpixel = 0 ;
+		int xpixelinv = 7 ;
+		for(xpixel = 0; xpixel < 8; xpixel++, xpixelinv--)
+		{
+			
+			// is ths pixel set to 1? If so then the code needs to toggle its state
+			int mask = 1 << xpixelinv ;
+			if (data & mask)
+			{
+				int x = (xpixel*SCALE) + coordx ;
+				int y = coordy + (yline*SCALE) ;
+
+				int colour = 0 ;
+
+				// a collision has been detected
+				if (m_ScreenData[y][x][0] == 0)
+				{
+					colour = 255 ;
+					m_Registers[15]=1;
+				}
+
+				// colour the pixel
+				for (int i = 0; i < SCALE; i++)
+				{
+					for (int j = 0; j < SCALE; j++)
+					{
+						m_ScreenData[y+i][x+j][0] = colour ;
+						m_ScreenData[y+i][x+j][1] = colour ;
+						m_ScreenData[y+i][x+j][2] = colour ;
+					}
+				}
+
+			}
+		}
+	}
 }
 
 // Skip instruction if key in Vx is pressed
 void Chip8::OpcodeEX9E(WORD opcode)
 {
-    
+    if(m_KeyState[m_Registers[(opcode & 0x0F00) >> 8]] == 1)
+    {
+        m_ProgramCounter += 2;
+    }
 }
 
 // Skip instruction if key in Vx is not pressed
 void Chip8::OpcodeEXA1(WORD opcode)
 {
-
+    if(m_KeyState[m_Registers[(opcode & 0x0F00) >> 8]] != 1)
+    {
+        m_ProgramCounter += 2;
+    }
 }
 
 // Set Vx to delay timer
 void Chip8::OpcodeFX07(WORD opcode)
 {
-
+    m_Registers[(opcode & 0x0F00) >> 8] = m_DelayTimer;
 }
 
-// key press is stored ni Vx
+// key press is stored in Vx
 void Chip8::OpcodeFX0A(WORD opcode)
 {
 
@@ -319,13 +433,13 @@ void Chip8::OpcodeFX0A(WORD opcode)
 // Set delay timer to Vx
 void Chip8::OpcodeFX15(WORD opcode)
 {
-
+    m_DelayTimer = m_Registers[(opcode & 0x0F00) >> 8];
 }
 
 // Set sound timer to Vx
 void Chip8::OpcodeFX18(WORD opcode)
 {
-
+    m_SoundTimer = m_Registers[(opcode & 0x0F00) >> 8];
 }
 
 // I += Vx

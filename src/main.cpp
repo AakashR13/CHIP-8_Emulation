@@ -1,33 +1,26 @@
 #include <SDL2/SDL.h>
+#include <SDL2/SDL_opengl.h>
+
+#include "chip8.h"
+
 #include <iostream>
+#include <map>
+#include <string>
+#include <fstream>
 
 // Define the width and height of the bytemap
-const int WIDTH = 640;
-const int HEIGHT = 480;
+static const int WIDTH = 640;
+static const int HEIGHT = 480;
 
-typedef uint8_t BitmapRow;  // 8 bits per row segment
-const int BITMAP_ROW_SIZE = (WIDTH + 7) / 8;  // Number of bytes per row in the bitmap
+typedef std::map<std::string, std::string> SETTINGS_MAP ;
 
-// Function prototype for updating the bitmap
-void updateBitmap(BitmapRow* bitmap, int width, int height, int frame);
-
-// Function to get a pixel from the bitmap
-inline uint8_t getPixel(const BitmapRow* bitmap, int x, int y, int width) {
-    int byteIndex = y * BITMAP_ROW_SIZE + x / 8;
-    int bitIndex = x % 8;
-    return (bitmap[byteIndex] >> (7 - bitIndex)) & 1;
-}
-
-// Function to set a pixel in the bitmap
-inline void setPixel(BitmapRow* bitmap, int x, int y, int width, uint8_t value) {
-    int byteIndex = y * BITMAP_ROW_SIZE + x / 8;
-    int bitIndex = x % 8;
-    if (value) {
-        bitmap[byteIndex] |= (1 << (7 - bitIndex));  // Set bit to 1
-    } else {
-        bitmap[byteIndex] &= ~(1 << (7 - bitIndex));  // Set bit to 0
-    }
-}
+void HandleInput(Chip8* cpu, SDL_Event* event);
+void SDL_INIT();
+void EMU_LOOP(Chip8* cpu, const SETTINGS_MAP& settings);
+void Render_Frame(Chip8* cpu);
+bool LoadGameSettings(SETTINGS_MAP& settings);
+bool CreateSDLWindow();
+bool LoadChip8Rom(Chip8* cpu, const SETTINGS_MAP& settings);
 
 int main(int argc, char* argv[]) {
     // Initialize SDL
@@ -70,8 +63,6 @@ int main(int argc, char* argv[]) {
         return 1;
     }
 
-    // Allocate memory for the bitmap
-    BitmapRow* bitmap = new BitmapRow[BITMAP_ROW_SIZE * HEIGHT]();
 
     // Main loop
     bool quit = false;
@@ -84,30 +75,6 @@ int main(int argc, char* argv[]) {
                 quit = true;
             }
         }
-
-        // Update the bitmap (fill with black and white pattern)
-        updateBitmap(bitmap, WIDTH, HEIGHT, frame);
-
-        // Prepare a buffer to hold the RGB pixel data
-        uint32_t* pixels = new uint32_t[WIDTH * HEIGHT];
-
-        // Convert bitmap to RGB format (black and white)
-        for (int y = 0; y < HEIGHT; ++y) {
-            for (int x = 0; x < WIDTH; ++x) {
-                uint8_t color = getPixel(bitmap, x, y, WIDTH);
-                pixels[y * WIDTH + x] = (color == 0) ? 0x000000 : 0xFFFFFF;  // Black or White
-            }
-        }
-
-        // Copy the pixel buffer to the texture
-        void* texturePixels;
-        int pitch;
-        SDL_LockTexture(texture, nullptr, &texturePixels, &pitch);
-        memcpy(texturePixels, pixels, WIDTH * HEIGHT * sizeof(uint32_t));
-        SDL_UnlockTexture(texture);
-
-        // Free the pixel buffer
-        delete[] pixels;
 
         // Clear the screen
         SDL_RenderClear(renderer);
@@ -123,7 +90,6 @@ int main(int argc, char* argv[]) {
     }
 
     // Cleanup
-    delete[] bitmap;
     SDL_DestroyTexture(texture);
     SDL_DestroyRenderer(renderer);
     SDL_DestroyWindow(window);
@@ -132,12 +98,221 @@ int main(int argc, char* argv[]) {
     return 0;
 }
 
-// Example function to update the bitmap
-void updateBitmap(BitmapRow* bitmap, int width, int height, int frame) {
-    for (int y = 0; y < height; ++y) {
-        for (int x = 0; x < width; ++x) {
-            // Simple pattern: alternate black and white pixels, change pattern every 30 frames
-            setPixel(bitmap, x, y, width, ((x + y + frame / 30) % 2 == 0) ? 0 : 1);  // 0 = Black, 1 = White
+
+void HandleInput(Chip8* cpu, SDL_Event* event)
+{
+    if(event->type == SDL_KEYDOWN)
+    {
+        int key = -1;
+        switch(event->key.keysym.sym)
+        {
+            case SDLK_x: key = 0; break;
+            case SDLK_1: key = 1; break;
+            case SDLK_2: key = 2; break;
+            case SDLK_3: key = 3; break;
+            case SDLK_q: key = 4; break;
+            case SDLK_w: key = 5; break;
+            case SDLK_e: key = 6; break;
+            case SDLK_a: key = 7 ; break;
+			case SDLK_s: key = 8 ; break;
+			case SDLK_d: key = 9 ; break;
+			case SDLK_z: key = 10 ; break;
+			case SDLK_c: key = 11 ; break;
+			case SDLK_4: key = 12 ; break;
+			case SDLK_r: key = 13 ; break;
+			case SDLK_f: key = 14 ; break;
+			case SDLK_v: key = 15 ; break;
+			default: break ;
         }
+        if(key!=-1)
+            cpu->KeyPressed(key);
     }
+    else if(event->type == SDL_KEYUP)
+    {
+        int key = -1;
+        switch(event->key.keysym.sym)
+        {
+            case SDLK_x: key = 0; break;
+            case SDLK_1: key = 1; break;
+            case SDLK_2: key = 2; break;
+            case SDLK_3: key = 3; break;
+            case SDLK_q: key = 4; break;
+            case SDLK_w: key = 5; break;
+            case SDLK_e: key = 6; break;
+            case SDLK_a: key = 7 ; break;
+			case SDLK_s: key = 8 ; break;
+			case SDLK_d: key = 9 ; break;
+			case SDLK_z: key = 10 ; break;
+			case SDLK_c: key = 11 ; break;
+			case SDLK_4: key = 12 ; break;
+			case SDLK_r: key = 13 ; break;
+			case SDLK_f: key = 14 ; break;
+			case SDLK_v: key = 15 ; break;
+			default: break ;
+        }
+        if(key!=-1)
+            cpu->KeyReleased(key);
+    }
+}
+
+void SDL_INIT()
+{
+    glViewport(0,0,WIDTH,HEIGHT);
+    glMatrixMode(GL_MODELVIEW);
+    glLoadIdentity();
+    glOrtho(0,WIDTH,0,HEIGHT,-1.0,1.0);
+    glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
+    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+    glShadeModel(GL_FLAT);
+
+    glEnable(GL_TEXTURE_2D);
+    glDisable(GL_DEPTH_TEST);
+    glDisable(GL_CULL_FACE);
+    glDisable(GL_DITHER);
+    glDisable(GL_LIGHTING);
+    glDisable(GL_BLEND);
+}
+
+void EMU_LOOP(Chip8* cpu, const SETTINGS_MAP& settings)
+{
+    SETTINGS_MAP::const_iterator it = settings.find("OpcodesPerSecond") ;
+
+	// make sure the RomName setting is in the setting map
+	if (settings.end() == it)
+	{
+		printf("The OpcodesPerSecond setting cannot be found in game.ini") ;
+		return  ;
+	}
+
+	int fps = 60 ;
+
+	// number of opcodes to execute a second
+	int numopcodes = atoi((*it).second.c_str()) ;
+
+	// number of opcodes to execute a frame 
+	int numframe = numopcodes / fps ;
+
+	bool quit = false ;
+	SDL_Event event;	
+	float interval = 1000 ;
+	interval /= fps ;
+
+	unsigned int time2 = SDL_GetTicks( ) ;
+
+	while (!quit)
+	{
+		while( SDL_PollEvent( &event ) ) 
+		{ 
+			HandleInput( cpu, &event ) ;
+
+			if( event.type == SDL_QUIT ) 
+			{ 
+				quit = true; 
+			} 
+		}
+
+		unsigned int current = SDL_GetTicks( ) ;
+
+		if( (time2 + interval) < current )
+		{
+			cpu->DecreaseTimers( ) ;
+			for (int i = 0 ; i < numframe; i++)
+				cpu->ExecuteNextOpcode( ) ;
+
+			time2 = current ;
+			Render_Frame(cpu) ;
+		} 
+	}
+}
+
+void Render_Frame(Chip8* cpu)
+{
+    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+	glLoadIdentity();
+	glRasterPos2i(-1, 1);
+	glPixelZoom(1, -1);
+	glDrawPixels(WIDTH, HEIGHT, GL_RGB, GL_UNSIGNED_BYTE, cpu->m_ScreenData);
+	SDL_GL_SwapBuffers( ) ;
+	glFlush();
+}
+
+bool LoadGameSettings(SETTINGS_MAP& settings)
+{
+    const int MAXLINE = 256;
+    std::ifstream file ;
+    file.open("game.ini");
+
+    if (false == file.is_open())
+    {
+        printf("could not open settings file game.ini");
+        return false ;
+    }
+
+    char line[MAXLINE] ;
+    std::string settingname ;
+    std::string settingvalue ;
+
+    while (false == file.eof())
+    {
+        memset(line, '\0', sizeof(line));
+        file.getline(line,MAXLINE);
+
+        //allow for comments and line breaks
+        if ('*' == line[0] || '\r' == line[0] || '\n' == line[0] || '\0' == line[0])
+            continue ;
+
+        // get the setting name
+        char* name = 0;
+        name = strtok(line, ":") ;
+        settingname = name ;
+
+        // get the setting value
+        char* value = 0;
+        value = strtok(NULL, "*") ;
+        settingvalue = value ;
+
+        // check for errors
+        if (value == 0 || name == 0 || settingname.empty() || settingvalue.empty())
+        {
+            printf("game.ini appears to be malformed") ;
+            file.close();
+            return false ;
+        }
+
+        // add to settings map
+        settings.insert(std::make_pair(settingname,settingvalue)) ;
+}
+
+bool CreateSDLWindow()
+{
+    if( SDL_Init(SDL_INIT_EVERYTHING) < 0 )
+    {
+        return false;
+    }
+    if( SDL_SetVideoMode(WIDTH, HEIGHT, 32, SDL_SWSURFACE) == NULL )
+    {
+        return false;
+    }
+
+    InitGL();
+
+    SDL_WM_SetCaption("Chip8 Emulator", NULL);
+    return true;
+}
+
+bool LoadChip8Rom(Chip8* cpu, const SETTINGS_MAP& settings)
+{
+    SETTINGS_MAP::const_iterator it = settings.find("RomName") ;
+
+    // make sure the RomName setting is in the setting map
+    if (settings.end() == it)
+    {
+        printf("The RomName setting cannot be found in game.ini");
+        return false ;
+    }
+
+    // load the rom file into memory
+    bool res = cpu->LoadRom( (*it).second ) ;
+
+    return res ;
 }
