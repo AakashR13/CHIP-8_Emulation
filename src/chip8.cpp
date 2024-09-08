@@ -95,7 +95,7 @@ int Chip8::GetKeyPressed( )
 	{
 		if (m_KeyState[i] > 0)
         {
-            printf("get_key %d pressed\n",i);
+            // printf("get_key %d pressed\n",i);
 			return i ;
         }
 	}
