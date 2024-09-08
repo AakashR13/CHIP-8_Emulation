@@ -3,7 +3,7 @@ CXX := g++
 
 # set the compiler flags
 CXXFLAGS := `sdl2-config --cflags` -ggdb3 -O0 --std=c++11 -Wall
-LDFLAGS := `sdl2-config --libs` -lSDL2_image -lm
+LDFLAGS := `sdl2-config --libs` -lSDL2_image -lm -lGL
 
 # directories
 SRC_DIR := src
@@ -14,13 +14,13 @@ EXC_DIR := bin
 HDRS :=
 
 # add source files here
-SRCS := $(SRC_DIR)/main.cpp
+SRCS := $(SRC_DIR)/main.cpp  $(SRC_DIR)/chip8.cpp
 
 # generate names of object files
 OBJS := $(patsubst $(SRC_DIR)/%.cpp,$(OBJ_DIR)/%.o,$(SRCS))
 
 # name of executable
-EXEC := $(EXC_DIR)/test
+EXEC := $(EXC_DIR)/chip8Emulator
 
 # default recipe
 all: $(EXEC)

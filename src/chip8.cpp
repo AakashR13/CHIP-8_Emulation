@@ -1,6 +1,8 @@
 #include "chip8.h"
 #include <assert.h>
-
+#include <cstring>
+#include <cstdio>
+#include <fstream>
 
 Chip8::Chip8(){}
 
@@ -10,22 +12,20 @@ Chip8* Chip8::CreateSingleton()
 {
     if (0 == s_Instance)
         s_Instance = new Chip8( ) ;
-    return s_Instance 
+    return s_Instance;
 }
 
+Chip8::~Chip8(){}
 
-void Chip8::CPUReset()
-{
+void Chip8::CPUReset() {
     m_AddressI = 0;
-    m_ProgramCounter = 0x200;
-    memset(m_Registers,0,sizeof(m_Registers));
-
-    // Load the game
-    File *in;
-    in = fopen("roms/Pong (1 player).ch8", "rb");
-    fread(&m_GameMemory[0x200], 1, 3584, in);
-    fclose(in);
-}                           
+    m_ProgramCounter = 0x200 ;
+    memset(m_Registers,0,sizeof(m_Registers)) ;
+    memset(m_GameMemory,0,sizeof(m_GameMemory)) ;
+	memset(m_KeyState,0,sizeof(m_KeyState)) ;
+	m_DelayTimer = 0 ;
+	m_SoundTimer = 0 ;
+}                         
 
 WORD Chip8::GetNextOpcode()
 {
@@ -87,6 +87,27 @@ void Chip8::PlaySound()
 
 }
 
+int Chip8::GetKeyPressed( )
+{
+	int res = -1 ;
+
+	for (int i = 0 ; i < 16; i++)
+	{
+		if (m_KeyState[i] > 0)
+        {
+            printf("get_key %d pressed\n",i);
+			return i ;
+        }
+	}
+
+	return res ;
+}
+
+WORD Chip8::GetProgramCounter()
+{
+    return m_ProgramCounter;
+}
+
 void Chip8::ExecuteNextOpcode()
 {
     WORD opcode = GetNextOpcode();
@@ -117,10 +138,10 @@ void Chip8::ExecuteNextOpcode()
 void Chip8::DecodeOpcode00(WORD opcode){
     switch(opcode & 0xF)
     {
-        case 0x0: Opcode00E0; break;
-        case 0xE: Opcode00EE; break;
+        case 0x0: Opcode00E0(); break;
+        case 0xE: Opcode00EE(); break;
         default: break;
-    }
+    }           
 }
 
 void Chip8::DecodeOpcode8(WORD opcode)
@@ -345,10 +366,8 @@ void Chip8::OpcodeCXNN(WORD opcode)
 void Chip8::OpcodeDXYN(WORD opcode)
 {
     const int SCALE = 10 ;
-	int regx = opcode & 0x0F00 ;
-	regx = regx >> 8 ;
-	int regy = opcode & 0x00F0 ;
-	regy = regy >> 4 ;
+	int regx = (opcode & 0x0F00) >> 8 ;
+	int regy = (opcode & 0x00F0) >> 4 ;
 
 	int coordx = m_Registers[regx] * SCALE;
 	int coordy = m_Registers[regy] * SCALE ;
@@ -381,7 +400,7 @@ void Chip8::OpcodeDXYN(WORD opcode)
 				if (m_ScreenData[y][x][0] == 0)
 				{
 					colour = 255 ;
-					m_Registers[15]=1;
+					m_Registers[0xf]=1;
 				}
 
 				// colour the pixel
@@ -427,7 +446,17 @@ void Chip8::OpcodeFX07(WORD opcode)
 // key press is stored in Vx
 void Chip8::OpcodeFX0A(WORD opcode)
 {
+    int regx = (opcode & 0x0F00) >> 8 ;
+	int keypressed = GetKeyPressed( ) ;
 
+	if (keypressed == -1)
+	{
+		m_ProgramCounter -= 2 ;
+	}
+	else
+	{
+		m_Registers[regx] = keypressed ;
+	}
 }
 
 // Set delay timer to Vx
@@ -474,7 +503,7 @@ void Chip8::OpcodeFX55(WORD opcode)
     {
         m_GameMemory[m_AddressI+i] = m_Registers[i];
     }
-    m_AddressI = m_AddressI+ (opcode & 0x0F00) >>8 +1;
+    m_AddressI = m_AddressI+ ((opcode & 0x0F00) >>8 )+1;
 }
 
 // Fills V0->Vx from memory starting at I
@@ -484,5 +513,5 @@ void Chip8::OpcodeFX65(WORD opcode)
     {
         m_Registers[m_AddressI+i] = m_GameMemory[i];
     }
-    m_AddressI = m_AddressI+ (opcode & 0x0F00) >>8 +1;
+    m_AddressI = m_AddressI+ ((opcode & 0x0F00) >>8) +1;
 }

@@ -11,7 +11,6 @@ const int ROMSIZE = 0xFFF ;
 class Chip8
 {
 public:
-    Chip8();
     ~Chip8();
 
     static Chip8* CreateSingleton( ) ;
@@ -21,7 +20,9 @@ public:
     void DecreaseTimers( );
     void KeyPressed( int key );
     void KeyReleased( int key );
+    WORD GetProgramCounter();
 private:
+    Chip8();
 
     void CPUReset();
     WORD GetNextOpcode();
