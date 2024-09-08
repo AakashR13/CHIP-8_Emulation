@@ -1,6 +1,4 @@
-Here’s a `README.md` template for your CHIP-8 emulator project:
-
----
+    ---
 
 # CHIP-8 Emulator
 
