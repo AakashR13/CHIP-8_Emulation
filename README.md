@@ -1,14 +1,3 @@
----
-tags:
-  - domain/build
-  - type/project
-  - type/project
-  - domain/build
-  - type/project
-  - domain/build
-default_tag: "#project/README"
-status: status/completed
----
 # CHIP-8 Emulator
 
 A CHIP-8 emulator written in C++ using SDL2 for input handling and OpenGL for rendering.
